@@ -12,7 +12,8 @@ import {
    hasKeys
 } from "./searcher";
 
-class Database {
+class Database
+{
    private static openConnections: string[] = [];
 
    /**
@@ -21,7 +22,8 @@ class Database {
     * returned back (asynchronously). This is purely the default behavior of
     * the IndexedDB API's open() method.
     */
-   static open(dbName: string): Promise<Database> {
+   static open(dbName: string): Promise<Database>
+   {
       return new Promise((resolve, reject) => {
          if (Database.openConnections.includes(dbName)) {
             throw new DOMException(`Connection to database '${dbName}' already exists. A connection to a database must be closed before a new one can be opened.`)
@@ -38,7 +40,8 @@ class Database {
       });
    }
 
-   static async exists(dbName: string): Promise<boolean> {
+   static async exists(dbName: string): Promise<boolean>
+   {
       var databaseInfoList = await indexedDB.databases();
       return databaseInfoList.some(database => database.name === dbName);
    }
@@ -50,7 +53,8 @@ class Database {
    private deleted: boolean;
    private closed: boolean;
 
-   constructor(idb: IDBDatabase) {
+   constructor(idb: IDBDatabase)
+   {
       this.idb = idb;
       this.name = idb.name;
       this.storeNames = idb.objectStoreNames;
@@ -59,7 +63,8 @@ class Database {
       this.closed = false;
    }
 
-   throwIfDeletedOrClosedOrClosed() {
+   throwIfDeletedOrClosedOrClosed()
+   {
       if (this.deleted) {
          throw new DOMException(`The underlying IndexedDB database '${this.name}' has been deleted. You'll have to create the database using Database.open(), and then use the returned Database instance to perform any further actions on the underlying database.`);
       }
@@ -69,17 +74,20 @@ class Database {
       }
    }
 
-   private removeFromOpenConnections() {
+   private removeFromOpenConnections()
+   {
       Database.openConnections.splice(Database.openConnections.indexOf(this.name), 1);
    }
 
-   close() {
+   close()
+   {
       this.throwIfDeletedOrClosedOrClosed();
       this.removeFromOpenConnections();
       this.idb!.close();
    }
 
-   delete(): Promise<void> {
+   delete(): Promise<void>
+   {
       this.throwIfDeletedOrClosedOrClosed();
 
       return new Promise((resolve, reject) => {
@@ -104,7 +112,8 @@ class Database {
       });
    }
 
-   private versionChange(versionChangeHandler): Promise<IDBObjectStore> {
+   private versionChange(versionChangeHandler): Promise<IDBObjectStore>
+   {
       return new Promise((resolve, reject) => {
          this.close();
 
@@ -129,7 +138,12 @@ class Database {
       });
    }
 
-   private createIDBStore(storeName: string, autoIncrementOrKeyPath?: boolean | string | null, indexes?: string[]) {
+   private createIDBStore(
+      storeName: string,
+      autoIncrementOrKeyPath?: boolean | string | null,
+      indexes?: string[]
+   ): IDBObjectStore
+   {
       var options: IDBObjectStoreParameters = {};
       if (typeof autoIncrementOrKeyPath === 'boolean') {
          options.autoIncrement = autoIncrementOrKeyPath;
@@ -151,7 +165,13 @@ class Database {
 
    // To create a new store in IndexedDB, a versionchange event must be fired.
    // And this can only be done by opening a connection with a newer version.
-   async createStore(storeName: string, schema?, autoIncrementOrKeyPath?: string | boolean | null, indexes?: string[] | DOMStringList) {
+   async createStore(
+      storeName: string,
+      schema?,
+      autoIncrementOrKeyPath?: string | boolean | null,
+      indexes?: string[] | DOMStringList
+   ): Promise<DatabaseStore>
+   {
       this.throwIfDeletedOrClosedOrClosed();
 
       await this.versionChange(
@@ -162,7 +182,8 @@ class Database {
       return dbStore;
    }
 
-   getIDBObjectStore(storeName: string, mode: IDBTransactionMode) {
+   getIDBObjectStore(storeName: string, mode: IDBTransactionMode)
+   {
       return this.idb!.transaction(storeName, mode).objectStore(storeName);
    }
 
@@ -170,7 +191,8 @@ class Database {
    // the internal stores map be populated with a DatabaseStore instance for
    // that IndexedDB object store. Hence, we could say that our computation of
    // stores is 'lazy'.
-   getStore(storeName: string) {
+   getStore(storeName: string)
+   {
       this.throwIfDeletedOrClosedOrClosed();
 
       if (this.existsStore(storeName)) {
@@ -183,17 +205,20 @@ class Database {
       throw new DOMException(`Object store '${storeName}' doesn't exist. Create it first using createStore().`);
    }
 
-   private deleteIDBObjectStore(storeName: string) {
+   private deleteIDBObjectStore(storeName: string)
+   {
       return this.idb!.deleteObjectStore(storeName);
    }
 
-   async deleteStore(storeName: string) {
+   async deleteStore(storeName: string)
+   {
       this.throwIfDeletedOrClosedOrClosed();
       await this.versionChange(this.deleteIDBObjectStore.bind(this, storeName));
       delete this.stores[storeName];
    }
 
-   existsStore(storeName: string) {
+   existsStore(storeName: string)
+   {
       this.throwIfDeletedOrClosedOrClosed();
       return this.storeNames.contains(storeName);
    }
