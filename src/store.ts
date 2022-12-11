@@ -1,4 +1,4 @@
-import Database from '.';
+import FrontendDB from '.';
 import DatabaseSearcher from './searcher';
 
 function intersection(a, b)
@@ -7,7 +7,6 @@ function intersection(a, b)
    if (!b) {
       return a;
    }
-
    var intersectionArray: any[] = []
    var setA = new Set(a);
 
@@ -16,62 +15,103 @@ function intersection(a, b)
          intersectionArray.push(key);
       }
    });
-
    return intersectionArray;
 }
 
-class DatabaseStore 
+
+const PUBLIC_METHOD_NAMES = [
+   'getIndexes',
+   'copy',
+   'addRecord',
+   'clearAllRecords',
+   'getRecord',
+   'getAllRecords',
+   'getAllKeys',
+   'getAllRecordsWithKeys',
+   'existsRecord',
+   'deleteRecord',
+   'updateRecord',
+   'searchRecords',
+   'searchRecordsAdvanced',
+];
+
+
+class FrontendDBStore
 {
-   private db: Database;
+   private db: FrontendDB;
    private schema?: Object;
    private idbObjectStore: IDBObjectStore | null;
    private name: string;
 
-   constructor(db: Database, name: string, schema?: Object)
+   // Public methods
+   public getIndexes: Function;
+   public copy: Function;
+   public addRecord: Function;
+   public clearAllRecords: Function;
+   public getRecord: Function;
+   public getAllRecords: Function;
+   public getAllKeys: Function;
+   public getAllRecordsWithKeys: Function;
+   public existsRecord: Function;
+   public deleteRecord: Function;
+   public updateRecord: Function;
+   public searchRecords: Function;
+   public searchRecordsAdvanced: Function;
+
+
+   constructor(db: FrontendDB, name: string, schema?: Object)
    {
       this.db = db;
       this.name = name;
       this.schema = schema;
       this.idbObjectStore = null;
+      this.definePublicMethods();
    }
 
-   private prepare(mode: IDBTransactionMode = 'readonly')
+
+   definePublicMethods()
    {
-      this.idbObjectStore = this.db.getIDBObjectStore(this.name, mode);
+      for (var methodName of PUBLIC_METHOD_NAMES) {
+         this[methodName] = this.db.getPublicMethodFunction(this['_' + methodName], this);
+      }
    }
 
-   getIndexes(): DOMStringList
+   private async _prepare(mode: IDBTransactionMode = 'readonly')
    {
-      this.prepare();
+      this.idbObjectStore = await this.db.getIDBObjectStore(this.name, mode);
+   }
+
+   private async _getIndexes(): Promise<DOMStringList>
+   {
+      await this._prepare();
       return this.idbObjectStore!.indexNames;
    }
 
-   async copy(newStoreName: string)
+   private async _copy(newStoreName: string)
    {
-      this.prepare();
+      await this._prepare();
 
       // Create an empty store with its autoIncrement and indexes both obtained
       // from this calling store.
-      var newEmptyStore = await this.db.createStore(
+      var newEmptyStore = await this.db._createStore(
          newStoreName,
          {},
          this.idbObjectStore!.autoIncrement,
          (this.idbObjectStore!.indexNames)
       );
-      var recordsWithKeys = await this.getAllRecordsWithKeys();
+      var recordsWithKeys = await this._getAllRecordsWithKeys();
 
       for (var recordWithKey of recordsWithKeys) {
-         await newEmptyStore.addRecord(recordWithKey[1], recordWithKey[0]);
+         await newEmptyStore._addRecord(recordWithKey[1], recordWithKey[0]);
       }
 
       return newEmptyStore;
    }
 
-   addRecord(record: Object, key?: IDBValidKey): Promise<IDBValidKey | false>
+   private _addRecord(record: Object, key?: IDBValidKey): Promise<IDBValidKey>
    {
-      this.prepare('readwrite');
-
       return new Promise(async (resolve, reject) => {
+         await this._prepare('readwrite');
          try {
             var request = this.idbObjectStore!.add(record, key);
             request.onsuccess = (e) => {
@@ -87,9 +127,9 @@ class DatabaseStore
       });
    }
 
-   async clearAllRecords(): Promise<void>
+   private async _clearAllRecords(): Promise<void>
    {
-      this.prepare('readwrite');
+      await this._prepare('readwrite');
 
       return new Promise(async (resolve, reject) => {
          try {
@@ -107,11 +147,10 @@ class DatabaseStore
       });
    }
 
-   getRecord(key: IDBValidKey): Promise<object>
+   private _getRecord(key: IDBValidKey): Promise<object>
    {
-      this.prepare();
-
       return new Promise(async (resolve, reject) => {
+         await this._prepare();
          var request = this.idbObjectStore!.get(key);
 
          request.onsuccess = (e) => {
@@ -129,11 +168,10 @@ class DatabaseStore
       });
    }
 
-   getAllRecords(): Promise<object[]>
+   private _getAllRecords(): Promise<object[]>
    {
-      this.prepare();
-
       return new Promise(async (resolve, reject) => {
+         await this._prepare();
          var request = this.idbObjectStore!.getAll();
 
          request.onsuccess = (e) => {
@@ -146,11 +184,10 @@ class DatabaseStore
       });
    }
 
-   getAllKeys(): Promise<IDBValidKey[]>
+   private _getAllKeys(): Promise<IDBValidKey[]>
    {
-      this.prepare();
-
       return new Promise(async (resolve, reject) => {
+         await this._prepare();
          var request = this.idbObjectStore!.getAllKeys();
 
          request.onsuccess = (e) => {
@@ -163,18 +200,18 @@ class DatabaseStore
       });
    }
 
-   async getAllRecordsWithKeys(): Promise<[IDBValidKey, object][]>
+   private async _getAllRecordsWithKeys(): Promise<[IDBValidKey, {[key: string]: any}][]>
    {
-      var records = await this.getAllRecords();
-      var keys = await this.getAllKeys();
+      var records = await this._getAllRecords();
+      var keys = await this._getAllKeys();
 
       return records.map((record, i) => [keys[i], record]);
    }
 
-   async existsRecord(key: IDBValidKey)
+   private async _existsRecord(key: IDBValidKey)
    {
       try {
-         await this.getRecord(key);
+         await this._getRecord(key);
          return true;
       }
       catch (e) {
@@ -182,16 +219,16 @@ class DatabaseStore
       }
    }
 
-   deleteRecord(key: IDBValidKey): Promise<void>
+   private _deleteRecord(key: IDBValidKey): Promise<void>
    {
       return new Promise(async (resolve, reject) => {
          // If there is no record with the given key, throw an error.
-         if (!await this.existsRecord(key)) {
+         if (!await this._existsRecord(key)) {
             reject(new DOMException(`Key '${key}' doesn't exist in store '${this.name}'. To add a record with this key, use addRecord().`));
             return;
          }
 
-         this.prepare('readwrite');
+         await this._prepare('readwrite');
 
          var request = this.idbObjectStore!.delete(key);
          request.onsuccess = (e) => {
@@ -203,11 +240,11 @@ class DatabaseStore
       });
    }
 
-   updateRecord(key: IDBValidKey, newDetails: object): Promise<void>
+   private _updateRecord(key: IDBValidKey, newDetails: object): Promise<void>
    {
       return new Promise(async (resolve, reject) => {
          // If there is no record with the given key, throw an error.
-         if (!await this.existsRecord(key)) {
+         if (!await this._existsRecord(key)) {
             reject(new DOMException(`Key '${key}' doesn't exist in store '${this.name}'. To add a record with this key, use addRecord().`));
             return;
          }
@@ -218,10 +255,10 @@ class DatabaseStore
          }
 
          // First we need to obtain the object already stored in the given key.
-         var record = await this.getRecord(key);
+         var record = await this._getRecord(key);
          var newRecord = Object.assign(record, newDetails);
 
-         this.prepare('readwrite');
+         await this._prepare('readwrite');
          var request = this.idbObjectStore!.put(newRecord, key);
          request.onsuccess = (e) => {
             resolve();
@@ -232,22 +269,22 @@ class DatabaseStore
       });
    }
 
-   searchRecords(
+   private _searchRecords(
       prop: string,
       searcher: DatabaseSearcher,
       recordsInstead: boolean = false
    ): Promise<any[]>
    {
-      var isPropIndex = this.getIndexes().contains(prop);
-      this.prepare();
-
       return new Promise(async (resolve, reject) => {
+         var isPropIndex = (await this._getIndexes()).contains(prop);
+         await this._prepare();
+
          var matchingKeysOrRecords = await searcher.run(this.idbObjectStore!, prop, isPropIndex, recordsInstead);
          resolve(matchingKeysOrRecords);
       });
    }
 
-   async searchRecordsAdvanced(
+   private async _searchRecordsAdvanced(
       filters: {[key: number]: DatabaseSearcher},
       recordsInstead: boolean = false
    ): Promise<any[]>
@@ -256,7 +293,7 @@ class DatabaseStore
 
       for (var prop in filters) {
          var searcher = filters[prop];
-         var localMatchingKeys: IDBValidKey[] = await this.searchRecords(prop, searcher);
+         var localMatchingKeys: IDBValidKey[] = await this._searchRecords(prop, searcher);
          matchingKeys = intersection(localMatchingKeys, matchingKeys);
       }
 
@@ -266,10 +303,10 @@ class DatabaseStore
 
       var matchingRecords: any[] = [];
       for (var matchingKey of matchingKeys) {
-         matchingRecords.push(await this.getRecord(matchingKey));
+         matchingRecords.push(await this._getRecord(matchingKey));
       }
       return matchingRecords;
    }
 }
 
-export default DatabaseStore;
+export default FrontendDBStore;

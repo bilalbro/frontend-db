@@ -5,14 +5,11 @@ import replace from "@rollup/plugin-replace";
 import terser from "@rollup/plugin-terser";
 
 export default {
-   input: 'src/index.ts',
+   input: 'dist/bundler.js',
    output: {
       file: 'dist/frontend-db.js',
-      // file: 'dist/frontend-db.min.js',
       format: 'umd',
-      name: 'window',
-      exports: 'named',
-      extend: true,
+      name: 'FrontendDB',
    },
    plugins: [
       nodeResolve({
@@ -22,6 +19,7 @@ export default {
          compact: false,
          babelHelpers: 'bundled',
          extensions: ['.ts', '.js'],
+         presets: ["@babel/preset-typescript"/* , "@babel/preset-env" */]
       }),
       commonjs(),
       replace({

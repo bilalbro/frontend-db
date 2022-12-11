@@ -3,9 +3,9 @@ describe('Working with records', function() {
    var store;
 
    before(async function() {
-      db = await Database.open('test-db');
+      db = await FrontendDB.open('test-db');
       await db.delete();
-      db = await Database.open('test-db');
+      db = await FrontendDB.open('test-db');
    });
 
    describe(`Store with manual keys`, function() {
@@ -138,9 +138,9 @@ describe('Working with records', function() {
       it(`getting this record (with key KEY) should now give {x: -1, y: -1}`, async () => {
          chai.expect(await store.getRecord(returnedKey)).to.eql({x: -1, y: -1});
       });
-      it(`copying the store should eventually complete without any errors and return a DatabaseStore instance`, async () => {
+      it(`copying the store should eventually complete without any errors and return a FrontendDBStore instance`, async () => {
          copiedStore = await store.copy('test-store-autoIncrement-copy');
-         chai.expect(copiedStore).to.be.instanceOf(DatabaseStore);
+         chai.expect(copiedStore).to.be.instanceOf(FrontendDBStore);
       });
       it(`the copied store should match the key-record pairs of the original store`, async () => {
          chai.expect(await store.getAllRecordsWithKeys()).to.eql(await copiedStore.getAllRecordsWithKeys());

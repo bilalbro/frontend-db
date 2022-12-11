@@ -3,9 +3,9 @@ describe('Searching records', () => {
    var store;
 
    before(async () => {
-      db = await Database.open('test-db');
+      db = await FrontendDB.open('test-db');
       await db.delete();
-      db = await Database.open('test-db');
+      db = await FrontendDB.open('test-db');
    });
 
    describe(`Store with manual keys and indexes 'x' and 'y': [{x: 10, y: 0}, {x: -5, y: 0}, {x: 50, y: 100}, {x: 11, y: 9999}]`, () => {

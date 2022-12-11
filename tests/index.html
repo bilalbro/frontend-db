@@ -17,6 +17,18 @@
       mocha.timeout(10000);
    </script>
    <script src="../dist/frontend-db.js"></script>
+   <script>
+      const {
+         isGreaterThan,
+         isGreaterThanEqualTo,
+         isLessThan,
+         isLessThanEqualTo,
+         isEqualTo,
+         isLike,
+         hasKeys,
+         FrontendDBStore
+      } = FrontendDB;
+   </script>
    <script src="./databases.test.js"></script>
    <script src="./stores.test.js"></script>
    <script src="./records.test.js"></script>

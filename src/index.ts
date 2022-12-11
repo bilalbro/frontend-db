@@ -1,7 +1,7 @@
 /**
  * Wrapper over IndexedDB.
  */
-import DatabaseStore from './store';
+import FrontendDBStore from './store';
 import {
    isGreaterThan,
    isGreaterThanEqualTo,
@@ -10,9 +10,19 @@ import {
    isEqualTo,
    isLike,
    hasKeys
-} from "./searcher";
+} from './searcher';
 
-class Database
+
+type DatabaseAction = {
+   function: Function;
+   store?: FrontendDBStore
+   arguments: [];
+   resolve: Function,
+   reject: Function
+}
+
+
+class FrontendDB
 {
    private static openConnections: string[] = [];
 
@@ -22,17 +32,17 @@ class Database
     * returned back (asynchronously). This is purely the default behavior of
     * the IndexedDB API's open() method.
     */
-   static open(dbName: string): Promise<Database>
+   static open(dbName: string): Promise<FrontendDB>
    {
-      return new Promise((resolve, reject) => {
-         if (Database.openConnections.includes(dbName)) {
-            throw new DOMException(`Connection to database '${dbName}' already exists. A connection to a database must be closed before a new one can be opened.`)
-         }
+      if (FrontendDB.openConnections.includes(dbName)) {
+         throw new DOMException(`Connection to database '${dbName}' already exists. A connection to a database must be closed before a new one can be opened.`);
+      }
+      FrontendDB.openConnections.push(dbName);
 
+      return new Promise((resolve, reject) => {
          var request = indexedDB.open(dbName);
          request.onsuccess = function(e) {
-            Database.openConnections.push(dbName);
-            resolve(new Database((e.target as IDBRequest).result));
+            resolve(new FrontendDB((e.target as IDBRequest).result));
          }
          request.onerror = function(e) {
             reject(e);
@@ -46,12 +56,24 @@ class Database
       return databaseInfoList.some(database => database.name === dbName);
    }
 
+
    private idb: IDBDatabase | null;
    private name: string;
    private storeNames: DOMStringList;
-   private stores: { [key: string]: DatabaseStore };
+   private stores: { [key: string]: FrontendDBStore };
    private deleted: boolean;
    private closed: boolean;
+   private databaseActions: DatabaseAction[] = [];
+   private processingOn = false;
+   private resolvingActionPromise = false;
+
+   // Public actions
+   public delete: Function;
+   public existsStore: Function;
+   public createStore: Function;
+   public getStore: Function;
+   public deleteStore: Function;
+
 
    constructor(idb: IDBDatabase)
    {
@@ -61,9 +83,91 @@ class Database
       this.stores = {};
       this.deleted = false;
       this.closed = false;
+      this.definePublicMethods();
    }
 
-   throwIfDeletedOrClosedOrClosed()
+
+   definePublicMethods()
+   {
+      this.delete = this.getPublicMethodFunction(this._delete);
+      this.existsStore = this.getPublicMethodFunction(this._existsStore);
+      this.createStore = this.getPublicMethodFunction(this._createStore);
+      this.getStore = this.getPublicMethodFunction(this._getStore);
+      this.deleteStore = this.getPublicMethodFunction(this._deleteStore);
+   }
+
+
+   getPublicMethodFunction(internalFunction: Function, store?: FrontendDBStore)
+   {
+      var _this = this;
+      return function() {
+         var databaseAction: DatabaseAction = {} as DatabaseAction;
+         var promise = new Promise((resolve, reject) => {
+            databaseAction = {
+               function: internalFunction,
+               store: store,
+               arguments: Array.prototype.slice.call(arguments),
+               resolve: resolve,
+               reject: reject
+            }
+         });
+         _this.queueDatabaseAction(databaseAction);
+         return promise;
+      }
+   }
+
+
+   private processNextDatabaseActionWhenFree()
+   {
+      setTimeout(async () => {
+         var databaseAction = this.databaseActions.shift() as DatabaseAction;
+         try {
+            var returnValue = await databaseAction.function.apply(
+               // If the action has an associated store, we ought to invoke its 
+               // corresponding function with 'this' configured to that very
+               // DatabaseStore instance.
+               databaseAction.store || this,
+               databaseAction.arguments
+            );
+            this.resolvingActionPromise = true;
+
+            databaseAction.resolve(returnValue);
+         }
+         catch (e) {
+            databaseAction.reject(e);
+         }
+         finally {
+            setTimeout(() => {
+               this.resolvingActionPromise = false;
+               if (!this.databaseActions.length) {
+                  this.processingOn = false;
+               }
+               else {
+                  this.processNextDatabaseActionWhenFree();
+               }
+            }, 0);
+         }
+      }, 0);
+   }
+
+
+   private queueDatabaseAction(databaseAction: DatabaseAction)
+   {
+      if (!this.resolvingActionPromise) {
+         this.databaseActions.push(databaseAction);
+      }
+      else {
+         this.databaseActions.unshift(databaseAction);
+      }
+
+      if (!this.processingOn) {
+         this.processingOn = true;
+         this.processNextDatabaseActionWhenFree();
+      }
+   }
+
+
+   private throwIfDeletedOrClosed()
    {
       if (this.deleted) {
          throw new DOMException(`The underlying IndexedDB database '${this.name}' has been deleted. You'll have to create the database using Database.open(), and then use the returned Database instance to perform any further actions on the underlying database.`);
@@ -76,19 +180,19 @@ class Database
 
    private removeFromOpenConnections()
    {
-      Database.openConnections.splice(Database.openConnections.indexOf(this.name), 1);
+      FrontendDB.openConnections.splice(FrontendDB.openConnections.indexOf(this.name), 1);
    }
 
    close()
    {
-      this.throwIfDeletedOrClosedOrClosed();
+      this.throwIfDeletedOrClosed();
       this.removeFromOpenConnections();
       this.idb!.close();
    }
 
-   delete(): Promise<void>
+   private _delete(): Promise<void>
    {
-      this.throwIfDeletedOrClosedOrClosed();
+      this.throwIfDeletedOrClosed();
 
       return new Promise((resolve, reject) => {
          // The close() method here is necessary because, as stated in the spec,
@@ -112,7 +216,7 @@ class Database
       });
    }
 
-   private versionChange(versionChangeHandler): Promise<IDBObjectStore>
+   private _versionChange(versionChangeHandler)
    {
       return new Promise((resolve, reject) => {
          this.close();
@@ -163,26 +267,26 @@ class Database
       return store;
    }
 
-   // To create a new store in IndexedDB, a versionchange event must be fired.
-   // And this can only be done by opening a connection with a newer version.
-   async createStore(
+   // This method is deliberately made public, since it's used by the store.ts
+   // file — specifically in the copy() method.
+   async _createStore(
       storeName: string,
       schema?,
       autoIncrementOrKeyPath?: string | boolean | null,
       indexes?: string[] | DOMStringList
-   ): Promise<DatabaseStore>
+   ): Promise<FrontendDBStore>
    {
-      this.throwIfDeletedOrClosedOrClosed();
+      this.throwIfDeletedOrClosed();
 
-      await this.versionChange(
+      await this._versionChange(
          this.createIDBStore.bind(this, storeName, autoIncrementOrKeyPath, indexes)
       );
-      var dbStore = new DatabaseStore(this, storeName, schema);
+      var dbStore = new FrontendDBStore(this, storeName, schema);
       this.stores[storeName] = dbStore;
       return dbStore;
    }
 
-   getIDBObjectStore(storeName: string, mode: IDBTransactionMode)
+   async getIDBObjectStore(storeName: string, mode: IDBTransactionMode)
    {
       return this.idb!.transaction(storeName, mode).objectStore(storeName);
    }
@@ -191,13 +295,13 @@ class Database
    // the internal stores map be populated with a DatabaseStore instance for
    // that IndexedDB object store. Hence, we could say that our computation of
    // stores is 'lazy'.
-   getStore(storeName: string)
+   private async _getStore(storeName: string)
    {
-      this.throwIfDeletedOrClosedOrClosed();
+      this.throwIfDeletedOrClosed();
 
       if (this.existsStore(storeName)) {
          if (!this.stores[storeName]) {
-            this.stores[storeName] = new DatabaseStore(this, storeName);
+            this.stores[storeName] = new FrontendDBStore(this, storeName);
          }
          return this.stores[storeName];
       }
@@ -210,16 +314,16 @@ class Database
       return this.idb!.deleteObjectStore(storeName);
    }
 
-   async deleteStore(storeName: string)
+   private async _deleteStore(storeName: string)
    {
-      this.throwIfDeletedOrClosedOrClosed();
-      await this.versionChange(this.deleteIDBObjectStore.bind(this, storeName));
+      this.throwIfDeletedOrClosed();
+      await this._versionChange(this.deleteIDBObjectStore.bind(this, storeName));
       delete this.stores[storeName];
    }
 
-   existsStore(storeName: string)
+   private async _existsStore(storeName: string)
    {
-      this.throwIfDeletedOrClosedOrClosed();
+      this.throwIfDeletedOrClosed();
       return this.storeNames.contains(storeName);
    }
 }
@@ -232,8 +336,7 @@ export {
    isEqualTo,
    isLike,
    hasKeys,
-   Database,
-   DatabaseStore
+   FrontendDBStore
 };
 
-export default Database;
+export default FrontendDB;

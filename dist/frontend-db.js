@@ -1,8 +1,8 @@
 (function (global, factory) {
-   typeof exports === 'object' && typeof module !== 'undefined' ? factory(exports) :
-   typeof define === 'function' && define.amd ? define(['exports'], factory) :
-   (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.window = global.window || {}));
-})(this, (function (exports) { 'use strict';
+   typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory() :
+   typeof define === 'function' && define.amd ? define(factory) :
+   (global = typeof globalThis !== 'undefined' ? globalThis : global || self, global.FrontendDB = factory());
+})(this, (function () { 'use strict';
 
    function intersection(a, b) {
      // If intersecting an array with undefined, return that array as it is.
@@ -18,35 +18,44 @@
      });
      return intersectionArray;
    }
-   class DatabaseStore {
+   const PUBLIC_METHOD_NAMES = ['getIndexes', 'copy', 'addRecord', 'clearAllRecords', 'getRecord', 'getAllRecords', 'getAllKeys', 'getAllRecordsWithKeys', 'existsRecord', 'deleteRecord', 'updateRecord', 'searchRecords', 'searchRecordsAdvanced'];
+   class FrontendDBStore {
+     // Public methods
+
      constructor(db, name, schema) {
        this.db = db;
        this.name = name;
        this.schema = schema;
        this.idbObjectStore = null;
+       this.definePublicMethods();
      }
-     prepare(mode = 'readonly') {
-       this.idbObjectStore = this.db.getIDBObjectStore(this.name, mode);
+     definePublicMethods() {
+       for (var methodName of PUBLIC_METHOD_NAMES) {
+         this[methodName] = this.db.getPublicMethodFunction(this['_' + methodName], this);
+       }
      }
-     getIndexes() {
-       this.prepare();
+     async _prepare(mode = 'readonly') {
+       this.idbObjectStore = await this.db.getIDBObjectStore(this.name, mode);
+     }
+     async _getIndexes() {
+       await this._prepare();
        return this.idbObjectStore.indexNames;
      }
-     async copy(newStoreName) {
-       this.prepare();
+     async _copy(newStoreName) {
+       await this._prepare();
 
        // Create an empty store with its autoIncrement and indexes both obtained
        // from this calling store.
-       var newEmptyStore = await this.db.createStore(newStoreName, {}, this.idbObjectStore.autoIncrement, this.idbObjectStore.indexNames);
-       var recordsWithKeys = await this.getAllRecordsWithKeys();
+       var newEmptyStore = await this.db._createStore(newStoreName, {}, this.idbObjectStore.autoIncrement, this.idbObjectStore.indexNames);
+       var recordsWithKeys = await this._getAllRecordsWithKeys();
        for (var recordWithKey of recordsWithKeys) {
-         await newEmptyStore.addRecord(recordWithKey[1], recordWithKey[0]);
+         await newEmptyStore._addRecord(recordWithKey[1], recordWithKey[0]);
        }
        return newEmptyStore;
      }
-     addRecord(record, key) {
-       this.prepare('readwrite');
+     _addRecord(record, key) {
        return new Promise(async (resolve, reject) => {
+         await this._prepare('readwrite');
          try {
            var request = this.idbObjectStore.add(record, key);
            request.onsuccess = e => {
@@ -60,8 +69,8 @@
          }
        });
      }
-     async clearAllRecords() {
-       this.prepare('readwrite');
+     async _clearAllRecords() {
+       await this._prepare('readwrite');
        return new Promise(async (resolve, reject) => {
          try {
            var request = this.idbObjectStore.clear();
@@ -76,9 +85,9 @@
          }
        });
      }
-     getRecord(key) {
-       this.prepare();
+     _getRecord(key) {
        return new Promise(async (resolve, reject) => {
+         await this._prepare();
          var request = this.idbObjectStore.get(key);
          request.onsuccess = e => {
            var record = e.target.result;
@@ -93,9 +102,9 @@
          };
        });
      }
-     getAllRecords() {
-       this.prepare();
+     _getAllRecords() {
        return new Promise(async (resolve, reject) => {
+         await this._prepare();
          var request = this.idbObjectStore.getAll();
          request.onsuccess = e => {
            var records = e.target.result;
@@ -106,9 +115,9 @@
          };
        });
      }
-     getAllKeys() {
-       this.prepare();
+     _getAllKeys() {
        return new Promise(async (resolve, reject) => {
+         await this._prepare();
          var request = this.idbObjectStore.getAllKeys();
          request.onsuccess = e => {
            var keys = e.target.result;
@@ -119,27 +128,27 @@
          };
        });
      }
-     async getAllRecordsWithKeys() {
-       var records = await this.getAllRecords();
-       var keys = await this.getAllKeys();
+     async _getAllRecordsWithKeys() {
+       var records = await this._getAllRecords();
+       var keys = await this._getAllKeys();
        return records.map((record, i) => [keys[i], record]);
      }
-     async existsRecord(key) {
+     async _existsRecord(key) {
        try {
-         await this.getRecord(key);
+         await this._getRecord(key);
          return true;
        } catch (e) {
          return false;
        }
      }
-     deleteRecord(key) {
+     _deleteRecord(key) {
        return new Promise(async (resolve, reject) => {
          // If there is no record with the given key, throw an error.
-         if (!(await this.existsRecord(key))) {
+         if (!(await this._existsRecord(key))) {
            reject(new DOMException(`Key '${key}' doesn't exist in store '${this.name}'. To add a record with this key, use addRecord().`));
            return;
          }
-         this.prepare('readwrite');
+         await this._prepare('readwrite');
          var request = this.idbObjectStore.delete(key);
          request.onsuccess = e => {
            resolve();
@@ -149,10 +158,10 @@
          };
        });
      }
-     updateRecord(key, newDetails) {
+     _updateRecord(key, newDetails) {
        return new Promise(async (resolve, reject) => {
          // If there is no record with the given key, throw an error.
-         if (!(await this.existsRecord(key))) {
+         if (!(await this._existsRecord(key))) {
            reject(new DOMException(`Key '${key}' doesn't exist in store '${this.name}'. To add a record with this key, use addRecord().`));
            return;
          }
@@ -162,9 +171,9 @@
          }
 
          // First we need to obtain the object already stored in the given key.
-         var record = await this.getRecord(key);
+         var record = await this._getRecord(key);
          var newRecord = Object.assign(record, newDetails);
-         this.prepare('readwrite');
+         await this._prepare('readwrite');
          var request = this.idbObjectStore.put(newRecord, key);
          request.onsuccess = e => {
            resolve();
@@ -174,19 +183,19 @@
          };
        });
      }
-     searchRecords(prop, searcher, recordsInstead = false) {
-       var isPropIndex = this.getIndexes().contains(prop);
-       this.prepare();
+     _searchRecords(prop, searcher, recordsInstead = false) {
        return new Promise(async (resolve, reject) => {
+         var isPropIndex = (await this._getIndexes()).contains(prop);
+         await this._prepare();
          var matchingKeysOrRecords = await searcher.run(this.idbObjectStore, prop, isPropIndex, recordsInstead);
          resolve(matchingKeysOrRecords);
        });
      }
-     async searchRecordsAdvanced(filters, recordsInstead = false) {
+     async _searchRecordsAdvanced(filters, recordsInstead = false) {
        var matchingKeys;
        for (var prop in filters) {
          var searcher = filters[prop];
-         var localMatchingKeys = await this.searchRecords(prop, searcher);
+         var localMatchingKeys = await this._searchRecords(prop, searcher);
          matchingKeys = intersection(localMatchingKeys, matchingKeys);
        }
        if (!recordsInstead) {
@@ -194,7 +203,7 @@
        }
        var matchingRecords = [];
        for (var matchingKey of matchingKeys) {
-         matchingRecords.push(await this.getRecord(matchingKey));
+         matchingRecords.push(await this._getRecord(matchingKey));
        }
        return matchingRecords;
      }
@@ -306,7 +315,7 @@
    /**
     * Wrapper over IndexedDB.
     */
-   class Database {
+   class FrontendDB {
      static openConnections = [];
 
      /**
@@ -316,14 +325,14 @@
       * the IndexedDB API's open() method.
       */
      static open(dbName) {
+       if (FrontendDB.openConnections.includes(dbName)) {
+         throw new DOMException(`Connection to database '${dbName}' already exists. A connection to a database must be closed before a new one can be opened.`);
+       }
+       FrontendDB.openConnections.push(dbName);
        return new Promise((resolve, reject) => {
-         if (Database.openConnections.includes(dbName)) {
-           throw new DOMException(`Connection to database '${dbName}' already exists. A connection to a database must be closed before a new one can be opened.`);
-         }
          var request = indexedDB.open(dbName);
          request.onsuccess = function (e) {
-           Database.openConnections.push(dbName);
-           resolve(new Database(e.target.result));
+           resolve(new FrontendDB(e.target.result));
          };
          request.onerror = function (e) {
            reject(e);
@@ -334,6 +343,12 @@
        var databaseInfoList = await indexedDB.databases();
        return databaseInfoList.some(database => database.name === dbName);
      }
+     databaseActions = [];
+     processingOn = false;
+     resolvingActionPromise = false;
+
+     // Public actions
+
      constructor(idb) {
        this.idb = idb;
        this.name = idb.name;
@@ -341,8 +356,69 @@
        this.stores = {};
        this.deleted = false;
        this.closed = false;
+       this.definePublicMethods();
      }
-     throwIfDeletedOrClosedOrClosed() {
+     definePublicMethods() {
+       this.delete = this.getPublicMethodFunction(this._delete);
+       this.existsStore = this.getPublicMethodFunction(this._existsStore);
+       this.createStore = this.getPublicMethodFunction(this._createStore);
+       this.getStore = this.getPublicMethodFunction(this._getStore);
+       this.deleteStore = this.getPublicMethodFunction(this._deleteStore);
+     }
+     getPublicMethodFunction(internalFunction, store) {
+       var _this = this;
+       return function () {
+         var databaseAction = {};
+         var promise = new Promise((resolve, reject) => {
+           databaseAction = {
+             function: internalFunction,
+             store: store,
+             arguments: Array.prototype.slice.call(arguments),
+             resolve: resolve,
+             reject: reject
+           };
+         });
+         _this.queueDatabaseAction(databaseAction);
+         return promise;
+       };
+     }
+     processNextDatabaseActionWhenFree() {
+       setTimeout(async () => {
+         var databaseAction = this.databaseActions.shift();
+         try {
+           var returnValue = await databaseAction.function.apply(
+           // If the action has an associated store, we ought to invoke its 
+           // corresponding function with 'this' configured to that very
+           // DatabaseStore instance.
+           databaseAction.store || this, databaseAction.arguments);
+           this.resolvingActionPromise = true;
+           databaseAction.resolve(returnValue);
+         } catch (e) {
+           databaseAction.reject(e);
+         } finally {
+           setTimeout(() => {
+             this.resolvingActionPromise = false;
+             if (!this.databaseActions.length) {
+               this.processingOn = false;
+             } else {
+               this.processNextDatabaseActionWhenFree();
+             }
+           }, 0);
+         }
+       }, 0);
+     }
+     queueDatabaseAction(databaseAction) {
+       if (!this.resolvingActionPromise) {
+         this.databaseActions.push(databaseAction);
+       } else {
+         this.databaseActions.unshift(databaseAction);
+       }
+       if (!this.processingOn) {
+         this.processingOn = true;
+         this.processNextDatabaseActionWhenFree();
+       }
+     }
+     throwIfDeletedOrClosed() {
        if (this.deleted) {
          throw new DOMException(`The underlying IndexedDB database '${this.name}' has been deleted. You'll have to create the database using Database.open(), and then use the returned Database instance to perform any further actions on the underlying database.`);
        }
@@ -351,15 +427,15 @@
        }
      }
      removeFromOpenConnections() {
-       Database.openConnections.splice(Database.openConnections.indexOf(this.name), 1);
+       FrontendDB.openConnections.splice(FrontendDB.openConnections.indexOf(this.name), 1);
      }
      close() {
-       this.throwIfDeletedOrClosedOrClosed();
+       this.throwIfDeletedOrClosed();
        this.removeFromOpenConnections();
        this.idb.close();
      }
-     delete() {
-       this.throwIfDeletedOrClosedOrClosed();
+     _delete() {
+       this.throwIfDeletedOrClosed();
        return new Promise((resolve, reject) => {
          // The close() method here is necessary because, as stated in the spec,
          // if the underlying IndexedDB database has open connections (that don't
@@ -380,7 +456,7 @@
          };
        });
      }
-     versionChange(versionChangeHandler) {
+     _versionChange(versionChangeHandler) {
        return new Promise((resolve, reject) => {
          this.close();
          var request = indexedDB.open(this.name, this.idb.version + 1);
@@ -419,16 +495,16 @@
        return store;
      }
 
-     // To create a new store in IndexedDB, a versionchange event must be fired.
-     // And this can only be done by opening a connection with a newer version.
-     async createStore(storeName, schema, autoIncrementOrKeyPath, indexes) {
-       this.throwIfDeletedOrClosedOrClosed();
-       await this.versionChange(this.createIDBStore.bind(this, storeName, autoIncrementOrKeyPath, indexes));
-       var dbStore = new DatabaseStore(this, storeName, schema);
+     // This method is deliberately made public, since it's used by the store.ts
+     // file — specifically in the copy() method.
+     async _createStore(storeName, schema, autoIncrementOrKeyPath, indexes) {
+       this.throwIfDeletedOrClosed();
+       await this._versionChange(this.createIDBStore.bind(this, storeName, autoIncrementOrKeyPath, indexes));
+       var dbStore = new FrontendDBStore(this, storeName, schema);
        this.stores[storeName] = dbStore;
        return dbStore;
      }
-     getIDBObjectStore(storeName, mode) {
+     async getIDBObjectStore(storeName, mode) {
        return this.idb.transaction(storeName, mode).objectStore(storeName);
      }
 
@@ -436,11 +512,11 @@
      // the internal stores map be populated with a DatabaseStore instance for
      // that IndexedDB object store. Hence, we could say that our computation of
      // stores is 'lazy'.
-     getStore(storeName) {
-       this.throwIfDeletedOrClosedOrClosed();
+     async _getStore(storeName) {
+       this.throwIfDeletedOrClosed();
        if (this.existsStore(storeName)) {
          if (!this.stores[storeName]) {
-           this.stores[storeName] = new DatabaseStore(this, storeName);
+           this.stores[storeName] = new FrontendDBStore(this, storeName);
          }
          return this.stores[storeName];
        }
@@ -449,28 +525,25 @@
      deleteIDBObjectStore(storeName) {
        return this.idb.deleteObjectStore(storeName);
      }
-     async deleteStore(storeName) {
-       this.throwIfDeletedOrClosedOrClosed();
-       await this.versionChange(this.deleteIDBObjectStore.bind(this, storeName));
+     async _deleteStore(storeName) {
+       this.throwIfDeletedOrClosed();
+       await this._versionChange(this.deleteIDBObjectStore.bind(this, storeName));
        delete this.stores[storeName];
      }
-     existsStore(storeName) {
-       this.throwIfDeletedOrClosedOrClosed();
+     async _existsStore(storeName) {
+       this.throwIfDeletedOrClosed();
        return this.storeNames.contains(storeName);
      }
    }
 
-   exports.Database = Database;
-   exports.DatabaseStore = DatabaseStore;
-   exports.default = Database;
-   exports.hasKeys = hasKeys;
-   exports.isEqualTo = isEqualTo;
-   exports.isGreaterThan = isGreaterThan;
-   exports.isGreaterThanEqualTo = isGreaterThanEqualTo;
-   exports.isLessThan = isLessThan;
-   exports.isLessThanEqualTo = isLessThanEqualTo;
-   exports.isLike = isLike;
+   FrontendDB.isGreaterThan = isGreaterThan, FrontendDB.isGreaterThanEqualTo = isGreaterThanEqualTo;
+   FrontendDB.isLessThan = isLessThan;
+   FrontendDB.isLessThanEqualTo = isLessThanEqualTo;
+   FrontendDB.isEqualTo = isEqualTo;
+   FrontendDB.isLike = isLike;
+   FrontendDB.hasKeys = hasKeys;
+   FrontendDB.FrontendDBStore = FrontendDBStore;
 
-   Object.defineProperty(exports, '__esModule', { value: true });
+   return FrontendDB;
 
 }));
