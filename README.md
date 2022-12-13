@@ -49,7 +49,7 @@ My goal was to improve as a software developer.
 
 And with the development of `FrontendDB`, all these goals have been accomplished. That I can say for sure. 🙂
 
-I strongly believe that using libraries creating by other people, and therefore keeping yourself from re-inventing the wheel, is a damn good thing.
+I strongly believe that using libraries created by other people, and therefore keeping yourself from re-inventing the wheel, is a damn good thing.
 
 But this only holds if you are damn confident with the underlying concepts used by the library. Or stated another way, this only holds if you know that, given the time, you could build a similar library yourself.
 
