@@ -1,16 +1,14 @@
 # FrontendDB
 
-> ## Table of contents
-> - [What exactly is it?](#What_exactly_is_it)
-> - [Motivation](#Motivation)
-> - [Why re-invent the wheel?](#Why_re-invent_the_wheel)
-> - [Technologies used](#Technologies_used)
-> - [API](#API)
->- [A little about the library](#API)
-
-
-## What exactly is it?
 `FrontendDB` is a very simple and intuitive wrapper over the arguably complex and low-level `IndexedDB` API.
+
+## Table of contents
+- [Motivation](#motivation)
+- [Why re-invent the wheel?](#why-re-invent-the-wheel)
+- [Technologies used](#technologies-used)
+- [API](#api)
+- [A little about the library](#a-little-about-the-library)
+
 
 ## Motivation
 As you may know, `IndexedDB` is a relatively-modern browser API to allow for storing web app data on the client-side. However, it is a bit complex and low-level if we compare it to other browser APIs and therefore does require a nice wrapper for us to be able to intuitively work with it.
