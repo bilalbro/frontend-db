@@ -9,10 +9,10 @@
 >- [A little about the library](#API)
 
 
-## What exactly is it? <a id="What_exactly_is_it"></a>
+## What exactly is it?
 `FrontendDB` is a very simple and intuitive wrapper over the arguably complex and low-level `IndexedDB` API.
 
-## Motivation <a name="Motivation"></a>
+## Motivation
 As you may know, `IndexedDB` is a relatively-modern browser API to allow for storing web app data on the client-side. However, it is a bit complex and low-level if we compare it to other browser APIs and therefore does require a nice wrapper for us to be able to intuitively work with it.
 
 Digging into this idea more, `IndexedDB` is entirely based on **events**, which makes sense because there is much more to it than *just* a success or error occurence for a given operation.
@@ -25,7 +25,7 @@ And that's exactly what I did.
 
 Along with the usage of promises, creating an intuitive wrapper class over `IndexedDB` with easy-to-reason methods drastically reduces the complexity of working with this powerful frontend storage medium and thereby improves the developer experience in working with it.
 
-## Why re-invent the wheel? <a name="Why_re-invent_the_wheel"></a>
+## Why re-invent the wheel?
 
 At this stage, you might be thinking as to why exactly did I spend my time re-inventing the wheel for a wrapper over `IndexedDB` when there are already many useful libraries out there for this purpose.
 
@@ -59,7 +59,7 @@ As a simple example to help clarify my point: React is a jaw-dropping innovation
 
 Anyhow, this is really nice topic for debate, which I can engage in at CodeGuage's blog at Medium some other day, so let's keep it till here. 🙂
 
-## Technologies used <a name="Technologies_used"></a>
+## Technologies used
 
 ### 1. **TypeScript**
 
@@ -81,11 +81,11 @@ For the bundling, I used **rollup.js**, which I've been using for quite a while 
 
 *So why not stick to it for the time being?*
 
-## API <a name="API"></a>
+## API
 
 The documentation of the API will be done in `API.md`. (I haven't created it now, but will do so very soon.)
 
-## A little about the library <a name="API"></a>
+## A little about the library
 
 It's worthwhile to talk here about the architecture of this library.
 
