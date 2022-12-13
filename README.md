@@ -1,5 +1,7 @@
 # FrontendDB
 
+[Hello](#API)
+
 ## What exactly is it?
 `FrontendDB` is a very simple and intuitive wrapper over the arguably complex and low-level `IndexedDB` API.
 
@@ -72,7 +74,7 @@ For the bundling, I used **rollup.js**, which I've been using for quite a while 
 
 *So why not stick to it for the time being?*
 
-## API
+## API <a name="introduction"></a>
 
 
 
