@@ -1,11 +1,18 @@
 # FrontendDB
 
-[Hello](#API)
+> ## Table of contents
+> - [What exactly is it?](#What_exactly_is_it)
+> - [Motivation](#Motivation)
+> - [Why re-invent the wheel?](#Why_re-invent_the_wheel)
+> - [Technologies used](#Technologies_used)
+> - [API](#API)
+>- [A little about the library](#API)
 
-## What exactly is it?
+
+## What exactly is it? <a name="What_exactly_is_it"></a>
 `FrontendDB` is a very simple and intuitive wrapper over the arguably complex and low-level `IndexedDB` API.
 
-## Motivation
+## Motivation <a name="Motivation"></a>
 As you may know, `IndexedDB` is a relatively-modern browser API to allow for storing web app data on the client-side. However, it is a bit complex and low-level if we compare it to other browser APIs and therefore does require a nice wrapper for us to be able to intuitively work with it.
 
 Digging into this idea more, `IndexedDB` is entirely based on **events**, which makes sense because there is much more to it than *just* a success or error occurence for a given operation.
@@ -18,7 +25,7 @@ And that's exactly what I did.
 
 Along with the usage of promises, creating an intuitive wrapper class over `IndexedDB` with easy-to-reason methods drastically reduces the complexity of working with this powerful frontend storage medium and thereby improves the developer experience in working with it.
 
-## Why re-invent the wheel?
+## Why re-invent the wheel? <a name="Why_re-invent_the_wheel"></a>
 
 At this stage, you might be thinking as to why exactly did I spend my time re-inventing the wheel for a wrapper over `IndexedDB` when there are already many useful libraries out there for this purpose.
 
@@ -52,7 +59,7 @@ As a simple example to help clarify my point: React is a jaw-dropping innovation
 
 Anyhow, this is really nice topic for debate, which I can engage in at CodeGuage's blog at Medium some other day, so let's keep it till here. 🙂
 
-## Technologies used
+## Technologies used <a name="Technologies_used"></a>
 
 ### 1. **TypeScript**
 
@@ -74,10 +81,24 @@ For the bundling, I used **rollup.js**, which I've been using for quite a while 
 
 *So why not stick to it for the time being?*
 
-## API <a name="introduction"></a>
+## API <a name="API"></a>
 
+The documentation of the API will be done in `API.md`. (I haven't created it now, but will do so very soon.)
 
+## A little about the library <a name="API"></a>
 
-## Architecture
+It's worthwhile to talk here about the architecture of this library.
 
-The architecture 
+- At a time, there can be **one and only one connection** to a given database.
+
+   For `IndexedDB`, it's possible to have multiple connections to a given database, but this can lead to a few problems in `FrontendDB`, likewise I sticked to the rule of allowing only one connection at a time.
+
+- If another connection is desired, the previous one must be **closed**.
+
+- All operations should ideally be performed using the **`await` keyword**, to simplify the code using `FrontendDB`.
+
+- If, somehow, using `await` isn't possible, the API can be **used in a synchronous fashion** as well. However, there is no need to nest operations within each other, since the operations are all queued up and executed in the order they are called, with preference being given to nested calls.
+
+- First, stores are created, and then records are added.
+
+- Any **errors occuring in any operation whatsoever are thrown** by `FrontendDB`. Hence, if you're using `await`, wrap the entire code in `try...catch`, or if you're using `Promise` directly, add a `catch()` block.
