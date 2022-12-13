@@ -9,7 +9,7 @@
 >- [A little about the library](#API)
 
 
-## What exactly is it? <a name="What_exactly_is_it"></a>
+## What exactly is it? <a id="What_exactly_is_it"></a>
 `FrontendDB` is a very simple and intuitive wrapper over the arguably complex and low-level `IndexedDB` API.
 
 ## Motivation <a name="Motivation"></a>
