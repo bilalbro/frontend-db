@@ -1,5 +1,7 @@
 import FrontendDB from '.';
 import DatabaseSearcher from './searcher';
+import { FrontendDBStoreJSON } from './types';
+
 
 function intersection(a, b)
 {
@@ -33,6 +35,8 @@ const PUBLIC_METHOD_NAMES = [
    'updateRecord',
    'searchRecords',
    'searchRecordsAdvanced',
+   'getJSON',
+   'exportToJSON',
 ];
 
 
@@ -50,13 +54,15 @@ class FrontendDBStore
    public clearAllRecords: Function;
    public getRecord: Function;
    public getAllRecords: Function;
-   public getAllKeys: Function;
-   public getAllRecordsWithKeys: Function;
+   public getAllKeys: typeof this._getAllKeys;
+   public getAllRecordsWithKeys: typeof this._getAllRecordsWithKeys;
    public existsRecord: Function;
    public deleteRecord: Function;
-   public updateRecord: Function;
+   public updateRecord: typeof this._updateRecord;
    public searchRecords: Function;
    public searchRecordsAdvanced: Function;
+   public getJSON: Function;
+   public exportToJSON: Function;
 
 
    constructor(db: FrontendDB, name: string, schema?: Object)
@@ -68,11 +74,11 @@ class FrontendDBStore
       this.definePublicMethods();
    }
 
-
-   definePublicMethods()
+   private definePublicMethods()
    {
       for (var methodName of PUBLIC_METHOD_NAMES) {
-         this[methodName] = this.db.getPublicMethodFunction(this['_' + methodName], this);
+         this[methodName] = FrontendDB.actionQueue.getActionWrapper(
+            this['_' + methodName], this);
       }
    }
 
@@ -259,7 +265,7 @@ class FrontendDBStore
          var newRecord = Object.assign(record, newDetails);
 
          await this._prepare('readwrite');
-         var request = this.idbObjectStore!.put(newRecord, key);
+         var request = this.idbObjectStore!.put(newRecord, this.idbObjectStore!.keyPath ? undefined : key);
          request.onsuccess = (e) => {
             resolve();
          }
@@ -306,6 +312,39 @@ class FrontendDBStore
          matchingRecords.push(await this._getRecord(matchingKey));
       }
       return matchingRecords;
+   }
+
+   async _getJSON()
+   {
+      await this._prepare('readwrite');
+
+      var exportedJSON: FrontendDBStoreJSON = {} as any;
+      exportedJSON.name = this.name;
+      exportedJSON.indexes = [...await this._getIndexes()];
+      exportedJSON.autoIncrement = this.idbObjectStore!.autoIncrement;
+
+      var keyPath = this.idbObjectStore!.keyPath;
+      exportedJSON.keyPath = keyPath === null ? !!(keyPath) : keyPath as string;
+
+      var recordsWithKeys = await this._getAllRecordsWithKeys();
+      exportedJSON.records = recordsWithKeys;
+
+      return exportedJSON;
+   }
+
+   private async _exportToJSON()
+   {
+      await FrontendDB.exportJSON(await this._getJSON());
+   }
+
+   async _restore(recordsWithKeys: [IDBValidKey, {[key: string]: any}][])
+   {
+      // TODO: Rectify the keyPath problem
+      await this._prepare('readwrite');
+
+      for (var recordWithKey of recordsWithKeys) {
+         await this._addRecord(recordWithKey[1], this.idbObjectStore!.keyPath ? undefined : recordWithKey[0]);
+      }
    }
 }
 

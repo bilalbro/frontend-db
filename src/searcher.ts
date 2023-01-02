@@ -1,7 +1,6 @@
-type RecordMatcherFunction = (prop: string, record: object) => boolean;
-type RecordMatcherFunctionWithValue = (value: any, prop: string, record: object) => boolean;
+import { RecordMatcherFunction, RecordMatcherFunctionWithValue } from './types';
 
-export default class DatabaseSearcher
+class DatabaseSearcher
 {
    isIndexSearchCompatible: boolean;
    idbKeyRange?: IDBKeyRange;
@@ -132,3 +131,5 @@ export function hasKeys(...args: string[])
       return true;
    });
 }
+
+export default DatabaseSearcher;

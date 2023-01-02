@@ -1,6 +1,7 @@
 /**
  * Wrapper over IndexedDB.
  */
+
 import FrontendDBStore from './store';
 import {
    isGreaterThan,
@@ -11,28 +12,78 @@ import {
    isLike,
    hasKeys
 } from './searcher';
+import ActionQueue from './action-queue';
+import { FrontendDBJSON, FrontendDBStoreJSON } from './types';
 
 
-type DatabaseAction = {
-   function: Function;
-   store?: FrontendDBStore
-   arguments: [];
-   resolve: Function,
-   reject: Function
-}
+const PUBLIC_METHOD_NAMES = [
+   'close',
+   'delete',
+   'existsStore',
+   'createStore',
+   'getStore',
+   'deleteStore',
+   'getJSON',
+   'exportToJSON',
+];
+
+const PUBLIC_STATIC_METHOD_NAMES = [
+   'open',
+   'exists',
+   'restore',
+];
 
 
 class FrontendDB
 {
    private static openConnections: string[] = [];
+   static actionQueue = new ActionQueue();
 
-   /**
-    * Opens a new connection to the given database. If the database doesn't
-    * exist already, a new one is created. Otherwise, the existing database is
-    * returned back (asynchronously). This is purely the default behavior of
-    * the IndexedDB API's open() method.
-    */
-   static open(dbName: string): Promise<FrontendDB>
+   // Public static methods
+   static open: typeof FrontendDB._open;
+   static exists: Function;
+   static restore: typeof FrontendDB._restore;
+
+
+   static async exportJSON(json: FrontendDBJSON | FrontendDBStoreJSON)
+   {
+      var jsonBlob = new Blob(
+         [JSON.stringify(json)],
+         { type: 'application/json' }
+      );
+
+      var anchorElement = document.createElement('a');
+      anchorElement.href = URL.createObjectURL(jsonBlob);
+      anchorElement.download = json.name;
+
+      document.body.appendChild(anchorElement);
+      setTimeout(function() {
+         anchorElement.click();
+      }, 0);
+   }
+
+
+   private static async _restore(dbJSONString: string)
+   {
+      var dbJSON: FrontendDBJSON = JSON.parse(dbJSONString);
+
+      var db = await FrontendDB._open(dbJSON.name);
+      for (var i = 0; i < dbJSON.stores.length; i++) {
+         var dbJSONStore = dbJSON.stores[i];
+
+         var store = await db._createStore(
+            dbJSONStore.name,
+            {},
+            dbJSONStore.autoIncrement || dbJSONStore.keyPath,
+            dbJSONStore.indexes
+         );
+         await store._restore(dbJSONStore.records);
+      }
+
+      db._publicClose();
+   }
+
+   private static _open(dbName: string): Promise<FrontendDB>
    {
       if (FrontendDB.openConnections.includes(dbName)) {
          throw new DOMException(`Connection to database '${dbName}' already exists. A connection to a database must be closed before a new one can be opened.`);
@@ -50,7 +101,7 @@ class FrontendDB
       });
    }
 
-   static async exists(dbName: string): Promise<boolean>
+   private static async _exists(dbName: string): Promise<boolean>
    {
       var databaseInfoList = await indexedDB.databases();
       return databaseInfoList.some(database => database.name === dbName);
@@ -61,18 +112,18 @@ class FrontendDB
    private name: string;
    private storeNames: DOMStringList;
    private stores: { [key: string]: FrontendDBStore };
-   private deleted: boolean;
+   public deleted: boolean;
    private closed: boolean;
-   private databaseActions: DatabaseAction[] = [];
-   private processingOn = false;
-   private resolvingActionPromise = false;
 
-   // Public actions
+   // Public methods
+   public close: Function;
    public delete: Function;
    public existsStore: Function;
    public createStore: Function;
    public getStore: Function;
    public deleteStore: Function;
+   public getJSON: Function;
+   public exportToJSON: Function;
 
 
    constructor(idb: IDBDatabase)
@@ -86,86 +137,12 @@ class FrontendDB
       this.definePublicMethods();
    }
 
-
-   definePublicMethods()
+   private definePublicMethods()
    {
-      this.delete = this.getPublicMethodFunction(this._delete);
-      this.existsStore = this.getPublicMethodFunction(this._existsStore);
-      this.createStore = this.getPublicMethodFunction(this._createStore);
-      this.getStore = this.getPublicMethodFunction(this._getStore);
-      this.deleteStore = this.getPublicMethodFunction(this._deleteStore);
-   }
-
-
-   getPublicMethodFunction(internalFunction: Function, store?: FrontendDBStore)
-   {
-      var _this = this;
-      return function() {
-         var databaseAction: DatabaseAction = {} as DatabaseAction;
-         var promise = new Promise((resolve, reject) => {
-            databaseAction = {
-               function: internalFunction,
-               store: store,
-               arguments: Array.prototype.slice.call(arguments),
-               resolve: resolve,
-               reject: reject
-            }
-         });
-         _this.queueDatabaseAction(databaseAction);
-         return promise;
+      for (var methodName of PUBLIC_METHOD_NAMES) {
+         this[methodName] = FrontendDB.actionQueue.getActionWrapper(this['_' + methodName], this);
       }
    }
-
-
-   private processNextDatabaseActionWhenFree()
-   {
-      setTimeout(async () => {
-         var databaseAction = this.databaseActions.shift() as DatabaseAction;
-         try {
-            var returnValue = await databaseAction.function.apply(
-               // If the action has an associated store, we ought to invoke its 
-               // corresponding function with 'this' configured to that very
-               // DatabaseStore instance.
-               databaseAction.store || this,
-               databaseAction.arguments
-            );
-            this.resolvingActionPromise = true;
-
-            databaseAction.resolve(returnValue);
-         }
-         catch (e) {
-            databaseAction.reject(e);
-         }
-         finally {
-            setTimeout(() => {
-               this.resolvingActionPromise = false;
-               if (!this.databaseActions.length) {
-                  this.processingOn = false;
-               }
-               else {
-                  this.processNextDatabaseActionWhenFree();
-               }
-            }, 0);
-         }
-      }, 0);
-   }
-
-
-   private queueDatabaseAction(databaseAction: DatabaseAction)
-   {
-      if (!this.resolvingActionPromise) {
-         this.databaseActions.push(databaseAction);
-      }
-      else {
-         this.databaseActions.unshift(databaseAction);
-      }
-
-      if (!this.processingOn) {
-         this.processingOn = true;
-         this.processNextDatabaseActionWhenFree();
-      }
-   }
-
 
    private throwIfDeletedOrClosed()
    {
@@ -183,10 +160,16 @@ class FrontendDB
       FrontendDB.openConnections.splice(FrontendDB.openConnections.indexOf(this.name), 1);
    }
 
-   close()
+   private _publicClose()
    {
       this.throwIfDeletedOrClosed();
       this.removeFromOpenConnections();
+      this.closed = true;
+      this._close();
+   }
+
+   private _close()
+   {
       this.idb!.close();
    }
 
@@ -200,7 +183,7 @@ class FrontendDB
          // close in response to the versionchange event triggered by
          // deleteDatabase()), the deletion of the database, and likewise, it's
          // 'success' event would be blocked until the closure happens.
-         this.close();
+         this._close();
 
          var request = indexedDB.deleteDatabase(this.name);
          request.onsuccess = (e) => {
@@ -216,27 +199,28 @@ class FrontendDB
       });
    }
 
-   private _versionChange(versionChangeHandler)
+   private _versionChange(versionChangeHandler: Function)
    {
       return new Promise((resolve, reject) => {
-         this.close();
+         this._close();
 
          var request = indexedDB.open(this.name, this.idb!.version + 1);
          request.onupgradeneeded = (e) => {
             this.idb = (e.target as IDBOpenDBRequest).result;
+            var transaction = (e.target as IDBRequest).transaction!;
             try {
                var returnValue = versionChangeHandler();
                this.storeNames = this.idb.objectStoreNames;
 
-               (e.target as IDBRequest).transaction!.oncomplete = function(e) {
+               transaction.oncomplete = function(e) {
                   resolve(returnValue);
-               }
+               };
             }
             catch (e) {
                reject(e);
             }
          }
-         request.onerror = function(e) {
+         request.onerror = (e) => {
             reject(e);
          }
       });
@@ -299,7 +283,7 @@ class FrontendDB
    {
       this.throwIfDeletedOrClosed();
 
-      if (this.existsStore(storeName)) {
+      if (await this._existsStore(storeName)) {
          if (!this.stores[storeName]) {
             this.stores[storeName] = new FrontendDBStore(this, storeName);
          }
@@ -326,6 +310,31 @@ class FrontendDB
       this.throwIfDeletedOrClosed();
       return this.storeNames.contains(storeName);
    }
+
+   private async _getJSON()
+   {
+      var dbJSON: FrontendDBJSON = {} as FrontendDBJSON;
+      dbJSON.name = this.name;
+      dbJSON.stores = [];
+
+      for (var i = 0; i < this.storeNames.length; i++) {
+         var store = await this._getStore(this.storeNames[i]);
+         dbJSON.stores.push(await store._getJSON());
+      }
+
+      return dbJSON;
+   }
+
+   private async _exportToJSON()
+   {
+      await FrontendDB.exportJSON(await this._getJSON());
+   }
+}
+
+
+for (var methodName of PUBLIC_STATIC_METHOD_NAMES) {
+   FrontendDB[methodName] = FrontendDB.actionQueue.getActionWrapper(
+      FrontendDB['_' + methodName], FrontendDB);
 }
 
 export {
