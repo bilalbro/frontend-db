@@ -2,11 +2,16 @@ describe('Working with records', function() {
    var db;
    var store;
 
-   before(async function() {
+   before(async () => {
       db = await FrontendDB.open('test-db');
       await db.delete();
       db = await FrontendDB.open('test-db');
    });
+
+   after(async () => {
+      // console.log('AFTER RECORDS')
+      db.close();
+   })
 
    describe(`Store with manual keys`, function() {
 

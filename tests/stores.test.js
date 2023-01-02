@@ -31,7 +31,6 @@ describe('Working with stores', function() {
             orderOfCalls.push(4);
             db.createStore('s4').then(() => {
                orderOfCalls.push(5);
-               console.log(orderOfCalls);
                done();
             });
          });

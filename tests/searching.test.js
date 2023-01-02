@@ -8,6 +8,11 @@ describe('Searching records', () => {
       db = await FrontendDB.open('test-db');
    });
 
+   after(async () => {
+      console.log('we are here')
+      db.close();
+   });
+
    describe(`Store with manual keys and indexes 'x' and 'y': [{x: 10, y: 0}, {x: -5, y: 0}, {x: 50, y: 100}, {x: 11, y: 9999}]`, () => {
       var records = [
          {x: 10, y: 0},
